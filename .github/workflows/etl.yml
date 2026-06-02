@@ -1,0 +1,47 @@
+name: ETL — Sincronização BNAFAR
+
+on:
+  schedule:
+    # 08:00 Brasília = 11:00 UTC
+    - cron: '0 11 * * *'
+    # 12:00 Brasília = 15:00 UTC
+    - cron: '0 15 * * *'
+    # 18:00 Brasília = 21:00 UTC
+    - cron: '0 21 * * *'
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Motivo da execução manual'
+        required: false
+        default: 'Execução manual'
+
+jobs:
+  sync:
+    name: Sincronizar dados BNAFAR
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Executar ETL
+        run: npm run etl:sync
+        env:
+          DATABASE_URL:   ${{ secrets.DATABASE_URL }}
+          BNAFAR_API_URL: ${{ secrets.BNAFAR_API_URL }}
+          BNAFAR_API_KEY: ${{ secrets.BNAFAR_API_KEY }}
+          ETL_SOURCE:     cron
+
+      - name: Notificar falha
+        if: failure()
+        run: echo "::error::Sincronização BNAFAR falhou em $(date '+%Y-%m-%d %H:%M UTC')"

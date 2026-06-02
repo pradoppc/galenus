@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+:root {
+  --color-primary:          #1A4D3A;
+  --color-primary-dark:     #133B2C;
+  --color-secondary:        #2B7A5A;
+  --color-accent:           #7EC9A8;
+  --color-background:       #FAFCFB;
+  --color-surface:          #EAF3EE;
+  --color-surface-border:   #D4E8DF;
+
+  --color-text-primary:     #1A4D3A;
+  --color-text-body:        #2D4A3E;
+  --color-text-muted:       #5B8C7A;
+  --color-text-light:       #9CB8B0;
+
+  --color-stock-ok:         #2B7A5A;
+  --color-stock-ok-bg:      #EAF3EE;
+  --color-stock-low:        #C8893A;
+  --color-stock-low-bg:     #FEF3E2;
+  --color-stock-none:       #C04848;
+  --color-stock-none-bg:    #FEF0F0;
+
+  --font-display:           'Cormorant Garamond', Georgia, serif;
+  --font-body:              'DM Sans', system-ui, sans-serif;
+  --font-size-base:         18px;
+
+  --touch-target-min:       48px;
+  --touch-target-primary:   60px;
+  --container-padding:      20px;
+}
+
+html {
+  font-size: var(--font-size-base);
+}
+
+body {
+  font-family: var(--font-body);
+  font-size: var(--font-size-base);
+  background: var(--color-background);
+  color: var(--color-text-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+body.font-large {
+  --font-size-base: 21px;
+}
+
+body.high-contrast {
+  --color-primary:        #0A2E20;
+  --color-text-body:      #000000;
+  --color-background:     #FFFFFF;
+  --color-surface-border: #000000;
+}
