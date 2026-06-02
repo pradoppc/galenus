@@ -3,19 +3,23 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/db'
 import { farmacias, medicamentos, estoques, etlLogs } from '@/db/schema'
-import { eq, ilike, or, desc, sql, and, lte } from 'drizzle-orm'
+import { eq, ilike, or, desc, sql, and } from 'drizzle-orm'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { getClientIP } from '@/lib/utils'
 import { SEARCH_DEFAULTS } from '@/lib/design-tokens'
 
 const querySchema = z.object({
-  q:        z.string().min(3, 'Mínimo 3 caracteres'),
-  lat:      z.coerce.number().min(-90).max(90).optional(),
-  lng:      z.coerce.number().min(-180).max(180).optional(),
-  raio:     z.coerce.number().min(1).max(50).default(SEARCH_DEFAULTS.RADIUS_KM),
-  programa: z.string().optional(),
-  page:     z.coerce.number().int().min(1).default(1),
-  limit:    z.coerce.number().int().min(1).max(20).default(SEARCH_DEFAULTS.PAGE_SIZE),
+  q:         z.string().min(3, 'Mínimo 3 caracteres no medicamento'),
+  uf:        z.string().length(2, 'UF inválida').toUpperCase(),
+  municipio: z.string().min(2, 'Município obrigatório'),
+  endereco:  z.string().optional(),
+  // lat/lng opcionais — usados quando endereço é geocodificado no cliente
+  lat:       z.coerce.number().min(-90).max(90).optional(),
+  lng:       z.coerce.number().min(-180).max(180).optional(),
+  raio:      z.coerce.number().min(1).max(50).default(SEARCH_DEFAULTS.RADIUS_KM),
+  programa:  z.string().optional(),
+  page:      z.coerce.number().int().min(1).default(1),
+  limit:     z.coerce.number().int().min(1).max(20).default(SEARCH_DEFAULTS.PAGE_SIZE),
 })
 
 export async function GET(req: NextRequest) {
@@ -37,11 +41,10 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  const { q, lat, lng, raio, programa, page, limit } = parsed.data
+  const { q, uf, municipio, endereco, lat, lng, raio, programa, page, limit } = parsed.data
   const offset = (page - 1) * limit
 
   try {
-    // Última sincronização bem-sucedida
     const [lastSync] = await db
       .select({ iniciadoEm: etlLogs.iniciadoEm })
       .from(etlLogs)
@@ -49,18 +52,9 @@ export async function GET(req: NextRequest) {
       .orderBy(desc(etlLogs.iniciadoEm))
       .limit(1)
 
-    // Condições WHERE
-    const searchCond = or(
-      ilike(medicamentos.produto,        `%${q}%`),
-      ilike(medicamentos.principioAtivo, `%${q}%`)
-    )!
-
-    const programaCond = programa
-      ? ilike(medicamentos.programa, `%${programa}%`)
-      : undefined
-
-    // Distância Haversine (calculada só quando há coordenadas)
-    const distanciaExpr = lat !== undefined && lng !== undefined
+    // Expressão de distância (só quando endereço foi geocodificado)
+    const hasCoords = lat !== undefined && lng !== undefined
+    const distanciaExpr = hasCoords
       ? sql<number>`(6371 * acos(
           LEAST(1, cos(radians(${lat})) * cos(radians(CAST(${farmacias.latitude} AS float))) *
           cos(radians(CAST(${farmacias.longitude} AS float)) - radians(${lng})) +
@@ -68,16 +62,38 @@ export async function GET(req: NextRequest) {
         ))`
       : sql<number>`NULL`
 
-    // Filtro de raio: sub-query para evitar referência a alias no WHERE
-    const raioCond = lat !== undefined && lng !== undefined
-      ? sql`(6371 * acos(
+    // Condições WHERE
+    const conds = [
+      // Medicamento (nome ou princípio ativo)
+      or(
+        ilike(medicamentos.produto,        `%${q}%`),
+        ilike(medicamentos.principioAtivo, `%${q}%`)
+      )!,
+      // UF e município obrigatórios
+      eq(farmacias.uf, uf),
+      ilike(farmacias.municipio, `%${municipio}%`),
+    ]
+
+    // Endereço: busca textual parcial
+    if (endereco?.trim()) {
+      conds.push(ilike(farmacias.endereco, `%${endereco.trim()}%`))
+    }
+
+    // Programa de saúde (filtro opcional)
+    if (programa) {
+      conds.push(ilike(medicamentos.programa, `%${programa}%`))
+    }
+
+    // Raio de distância (só quando geocodificado)
+    if (hasCoords) {
+      conds.push(
+        sql`(6371 * acos(
           LEAST(1, cos(radians(${lat})) * cos(radians(CAST(${farmacias.latitude} AS float))) *
           cos(radians(CAST(${farmacias.longitude} AS float)) - radians(${lng})) +
           sin(radians(${lat})) * sin(radians(CAST(${farmacias.latitude} AS float))))
         )) <= ${raio}`
-      : undefined
-
-    const whereClauses = [searchCond, programaCond, raioCond].filter(Boolean) as Parameters<typeof and>
+      )
+    }
 
     const rows = await db
       .select({
@@ -97,19 +113,19 @@ export async function GET(req: NextRequest) {
         distancia_km:                distanciaExpr,
       })
       .from(estoques)
-      .innerJoin(farmacias,     eq(estoques.farmaciaId,    farmacias.id))
-      .innerJoin(medicamentos,  eq(estoques.medicamentoId, medicamentos.id))
-      .where(and(...whereClauses))
+      .innerJoin(farmacias,    eq(estoques.farmaciaId,    farmacias.id))
+      .innerJoin(medicamentos, eq(estoques.medicamentoId, medicamentos.id))
+      .where(and(...conds))
       .orderBy(
-        lat !== undefined
-          ? sql`8 ASC NULLS LAST`   // coluna 8 = distancia_km no SELECT
+        hasCoords
+          ? sql`distancia_km ASC NULLS LAST`
           : desc(estoques.quantidade)
       )
       .limit(limit + 1)
       .offset(offset)
 
     const hasMore = rows.length > limit
-    const data    = rows.slice(0, limit).map((r) => ({
+    const data    = rows.slice(0, limit).map(r => ({
       ...r,
       farmacia_lat:  r.farmacia_lat  ? parseFloat(String(r.farmacia_lat))  : null,
       farmacia_lng:  r.farmacia_lng  ? parseFloat(String(r.farmacia_lng))  : null,

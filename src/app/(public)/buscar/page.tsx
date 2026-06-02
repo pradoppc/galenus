@@ -9,39 +9,42 @@ import { AccessibilityToggle } from '@/components/AccessibilityToggle'
 import type { BuscaParams, MedicamentoResult, BuscaResponse } from '@/types'
 
 const MapaFarmacias = dynamic(
-  () => import('@/components/MapaFarmacias').then((m) => m.MapaFarmacias),
+  () => import('@/components/MapaFarmacias').then(m => m.MapaFarmacias),
   { ssr: false, loading: () => <div className="w-full rounded-[14px] bg-[#EAF3EE] animate-pulse" style={{ minHeight: 300 }} /> }
 )
 
 export default function BuscarPage() {
-  const [results,   setResults]   = useState<MedicamentoResult[]>([])
-  const [loading,   setLoading]   = useState(false)
-  const [hasMore,   setHasMore]   = useState(false)
-  const [page,      setPage]      = useState(1)
-  const [lastParams,setLastParams]= useState<BuscaParams | null>(null)
-  const [showMap,   setShowMap]   = useState(false)
-  const [selected,  setSelected]  = useState<MedicamentoResult | null>(null)
-  const [userLat,   setUserLat]   = useState<number | undefined>()
-  const [userLng,   setUserLng]   = useState<number | undefined>()
+  const [results,    setResults]    = useState<MedicamentoResult[]>([])
+  const [loading,    setLoading]    = useState(false)
+  const [hasMore,    setHasMore]    = useState(false)
+  const [page,       setPage]       = useState(1)
+  const [lastParams, setLastParams] = useState<BuscaParams | null>(null)
+  const [showMap,    setShowMap]    = useState(false)
+  const [selected,   setSelected]   = useState<MedicamentoResult | null>(null)
+  const [searched,   setSearched]   = useState(false)
 
   const fetchResults = useCallback(async (params: BuscaParams, append = false) => {
     setLoading(true)
     try {
       const sp = new URLSearchParams({
-        q:     params.q,
-        page:  String(params.page ?? 1),
-        limit: '20',
+        q:         params.q,
+        uf:        params.uf,
+        municipio: params.municipio,
+        page:      String(params.page ?? 1),
+        limit:     '20',
       })
-      if (params.lat) { sp.set('lat', String(params.lat)); sp.set('lng', String(params.lng)) }
-      if (params.raio)    sp.set('raio',    String(params.raio))
-      if (params.programa) sp.set('programa', params.programa)
+      if (params.endereco)                  sp.set('endereco', params.endereco)
+      if (params.lat != null)               sp.set('lat',  String(params.lat))
+      if (params.lng != null)               sp.set('lng',  String(params.lng))
+      if (params.raio != null)              sp.set('raio', String(params.raio))
+      if (params.programa)                  sp.set('programa', params.programa)
 
       const res  = await fetch(`/api/medicamentos?${sp}`)
       const data = await res.json() as BuscaResponse & { hasMore: boolean }
 
       setResults(prev => append ? [...prev, ...data.data] : data.data)
       setHasMore(data.hasMore ?? false)
-      if (params.lat) { setUserLat(params.lat); setUserLng(params.lng) }
+      setSearched(true)
     } finally {
       setLoading(false)
     }
@@ -50,20 +53,21 @@ export default function BuscarPage() {
   const handleSearch = useCallback((params: BuscaParams) => {
     setPage(1)
     setResults([])
+    setShowMap(false)
+    setSelected(null)
     setLastParams(params)
     fetchResults({ ...params, page: 1 }, false)
   }, [fetchResults])
 
   const handleLoadMore = useCallback(() => {
     if (!lastParams) return
-    const nextPage = page + 1
-    setPage(nextPage)
-    fetchResults({ ...lastParams, page: nextPage }, true)
+    const next = page + 1
+    setPage(next)
+    fetchResults({ ...lastParams, page: next }, true)
   }, [lastParams, page, fetchResults])
 
   return (
     <main className="max-w-[640px] mx-auto px-5 pb-10">
-      {/* Header */}
       <header className="flex items-center justify-between py-4 sticky top-0 bg-[#FAFCFB] z-10">
         <Link href="/" className="text-[#1A4D3A] text-[18px] font-medium" aria-label="Voltar para início">
           ← Galenus
@@ -78,7 +82,10 @@ export default function BuscarPage() {
       {results.length > 0 && (
         <div className="mt-6 space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-[16px] text-[#5B8C7A]">{results.length} resultado{results.length !== 1 ? 's' : ''}</p>
+            <p className="text-[16px] text-[#5B8C7A]">
+              {results.length} resultado{results.length !== 1 ? 's' : ''}
+              {lastParams?.municipio && ` em ${lastParams.municipio}/${lastParams.uf}`}
+            </p>
             <button
               onClick={() => setShowMap(v => !v)}
               className="text-[16px] text-[#1A4D3A] underline hover:no-underline"
@@ -91,8 +98,8 @@ export default function BuscarPage() {
           {showMap && (
             <MapaFarmacias
               items={results}
-              userLat={userLat}
-              userLng={userLng}
+              userLat={lastParams?.lat}
+              userLng={lastParams?.lng}
               selected={selected}
             />
           )}
@@ -102,15 +109,17 @@ export default function BuscarPage() {
             loading={loading}
             hasMore={hasMore}
             onLoadMore={handleLoadMore}
-            onVerMapa={(item) => { setSelected(item); setShowMap(true) }}
+            onVerMapa={item => { setSelected(item); setShowMap(true) }}
           />
         </div>
       )}
 
-      {!loading && results.length === 0 && lastParams && (
+      {!loading && searched && results.length === 0 && (
         <div className="mt-10 text-center text-[#5B8C7A]">
           <p className="text-[20px]">Nenhuma farmácia encontrada</p>
-          <p className="mt-2 text-[16px]">Tente ampliar o raio ou verificar o nome do medicamento.</p>
+          <p className="mt-2 text-[16px]">
+            Tente um endereço diferente ou verifique o nome do medicamento.
+          </p>
         </div>
       )}
     </main>

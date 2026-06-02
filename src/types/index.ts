@@ -27,13 +27,16 @@ export interface MedicamentoResult {
 }
 
 export interface BuscaParams {
-  q: string
-  lat?: number
-  lng?: number
-  raio?: number
+  q:         string
+  uf:        string
+  municipio: string
+  endereco?: string
+  lat?:      number
+  lng?:      number
+  raio?:     number
   programa?: string
-  page?: number
-  limit?: number
+  page?:     number
+  limit?:    number
 }
 
 export interface BuscaResponse {
