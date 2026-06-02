@@ -23,20 +23,14 @@
 
   --font-display:           'Cormorant Garamond', Georgia, serif;
   --font-body:              'DM Sans', system-ui, sans-serif;
-  --font-size-base:         18px;
 
   --touch-target-min:       48px;
   --touch-target-primary:   60px;
   --container-padding:      20px;
 }
 
-html {
-  font-size: var(--font-size-base);
-}
-
 body {
   font-family: var(--font-body);
-  font-size: var(--font-size-base);
   background: var(--color-background);
   color: var(--color-text-body);
   -webkit-font-smoothing: antialiased;
@@ -48,13 +42,62 @@ h1, h2, h3 {
   color: var(--color-text-primary);
 }
 
-body.font-large {
-  --font-size-base: 21px;
+/* ── Acessibilidade: fonte aumentada ──────────────────────────────────────── */
+/* Zoom no html escala toda a página, incluindo valores px hardcoded no Tailwind */
+html.font-large {
+  zoom: 1.17;
 }
 
-body.high-contrast {
-  --color-primary:        #0A2E20;
-  --color-text-body:      #000000;
-  --color-background:     #FFFFFF;
-  --color-surface-border: #000000;
+/* ── Acessibilidade: alto contraste ──────────────────────────────────────── */
+html.high-contrast body {
+  background: #ffffff !important;
+  color: #000000 !important;
+}
+
+html.high-contrast h1,
+html.high-contrast h2,
+html.high-contrast h3,
+html.high-contrast p,
+html.high-contrast span,
+html.high-contrast label,
+html.high-contrast a,
+html.high-contrast button {
+  color: #000000 !important;
+}
+
+html.high-contrast input,
+html.high-contrast select,
+html.high-contrast textarea {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border-color: #000000 !important;
+}
+
+html.high-contrast [class*="bg-[#EAF"],
+html.high-contrast [class*="bg-[#FAF"],
+html.high-contrast [class*="bg-white"] {
+  background-color: #ffffff !important;
+}
+
+html.high-contrast [class*="text-[#"] {
+  color: #000000 !important;
+}
+
+html.high-contrast [class*="border-[#"] {
+  border-color: #000000 !important;
+}
+
+/* Garante legibilidade dos botões primários no alto contraste */
+html.high-contrast .bg-\[\#1A4D3A\],
+html.high-contrast [class*="bg-[#1A4D3A]"],
+html.high-contrast [class*="bg-[#2B7A5A]"],
+html.high-contrast [class*="bg-[#133B2C]"] {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+  border-color: #000000 !important;
+}
+
+html.high-contrast [class*="text-[#EAF"],
+html.high-contrast [class*="text-white"] {
+  color: #ffffff !important;
 }

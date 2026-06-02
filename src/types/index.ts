@@ -31,6 +31,7 @@ export interface BuscaParams {
   uf:        string
   municipio: string
   endereco?: string
+  unidade?:  string
   lat?:      number
   lng?:      number
   raio?:     number

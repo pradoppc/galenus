@@ -13,6 +13,7 @@ const querySchema = z.object({
   uf:        z.string().length(2, 'UF inválida').toUpperCase(),
   municipio: z.string().min(2, 'Município obrigatório'),
   endereco:  z.string().optional(),
+  unidade:   z.string().optional(),
   // lat/lng opcionais — usados quando endereço é geocodificado no cliente
   lat:       z.coerce.number().min(-90).max(90).optional(),
   lng:       z.coerce.number().min(-180).max(180).optional(),
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  const { q, uf, municipio, endereco, lat, lng, raio, programa, page, limit } = parsed.data
+  const { q, uf, municipio, endereco, unidade, lat, lng, raio, programa, page, limit } = parsed.data
   const offset = (page - 1) * limit
 
   try {
@@ -77,6 +78,11 @@ export async function GET(req: NextRequest) {
     // Endereço: busca textual parcial
     if (endereco?.trim()) {
       conds.push(ilike(farmacias.endereco, `%${endereco.trim()}%`))
+    }
+
+    // Unidade de saúde: busca pelo nome da farmácia
+    if (unidade?.trim()) {
+      conds.push(ilike(farmacias.nome, `%${unidade.trim()}%`))
     }
 
     // Programa de saúde (filtro opcional)
