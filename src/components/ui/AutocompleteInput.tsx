@@ -1,47 +1,55 @@
 'use client'
 
-import { useRef, useEffect, useState, KeyboardEvent } from 'react'
+import { useRef, useState, KeyboardEvent } from 'react'
 import { cn } from '@/lib/utils'
 
 interface AutocompleteInputProps {
-  label:         string
-  placeholder?:  string
-  value:         string
-  onChange:      (val: string) => void
-  onSelect?:     (val: string) => void
-  suggestions:   string[]
-  loading?:      boolean
-  error?:        string
-  hint?:         string
-  disabled?:     boolean
-  required?:     boolean
-  id?:           string
+  label:          string
+  placeholder?:   string
+  value:          string
+  onChange:       (val: string) => void
+  onSelect?:      (val: string) => void
+  suggestions:    string[]
+  loading?:       boolean
+  error?:         string
+  hint?:          string
+  disabled?:      boolean
+  required?:      boolean
+  id?:            string
+  /** Abre a lista ao focar mesmo com input vazio */
+  showOnFocus?:   boolean
 }
 
 export function AutocompleteInput({
   label, placeholder, value, onChange, onSelect,
   suggestions, loading, error, hint, disabled, required, id,
+  showOnFocus = false,
 }: AutocompleteInputProps) {
-  const [open,     setOpen]     = useState(false)
-  const [activeIdx,setActiveIdx]= useState(-1)
-  const inputRef                = useRef<HTMLInputElement>(null)
-  const listRef                 = useRef<HTMLUListElement>(null)
+  const [open,      setOpen]      = useState(false)
+  const [activeIdx, setActiveIdx] = useState(-1)
+  const inputRef                  = useRef<HTMLInputElement>(null)
   const inputId = id ?? label.toLowerCase().replace(/\s+/g, '-')
-
-  useEffect(() => {
-    setOpen(suggestions.length > 0 && value.length >= 1)
-    setActiveIdx(-1)
-  }, [suggestions, value])
 
   function select(val: string) {
     onChange(val)
     onSelect?.(val)
     setOpen(false)
+    setActiveIdx(-1)
     inputRef.current?.focus()
   }
 
+  function handleFocus() {
+    if (suggestions.length > 0 && (showOnFocus || value.length > 0)) setOpen(true)
+  }
+
+  function handleChange(v: string) {
+    onChange(v)
+    setActiveIdx(-1)
+    setOpen(suggestions.length > 0 || v.length > 0)
+  }
+
   function handleKey(e: KeyboardEvent<HTMLInputElement>) {
-    if (!open) return
+    if (!open || suggestions.length === 0) return
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       setActiveIdx(i => Math.min(i + 1, suggestions.length - 1))
@@ -56,6 +64,9 @@ export function AutocompleteInput({
     }
   }
 
+  // Re-abre quando suggestions chegam (após resposta da API)
+  const shouldOpen = open && suggestions.length > 0
+
   return (
     <div className="flex flex-col gap-1.5 relative">
       <label htmlFor={inputId} className="text-[16px] font-medium text-[#1A4D3A]">
@@ -68,16 +79,16 @@ export function AutocompleteInput({
           id={inputId}
           type="text"
           value={value}
-          onChange={e => { onChange(e.target.value); setOpen(true) }}
-          onBlur={() => setTimeout(() => setOpen(false), 150)}
-          onFocus={() => suggestions.length > 0 && setOpen(true)}
+          onChange={e => handleChange(e.target.value)}
+          onBlur={() => setTimeout(() => setOpen(false), 180)}
+          onFocus={handleFocus}
           onKeyDown={handleKey}
           placeholder={placeholder}
           disabled={disabled}
           autoComplete="off"
           aria-autocomplete="list"
-          aria-expanded={open}
-          aria-controls={open ? `${inputId}-list` : undefined}
+          aria-expanded={shouldOpen}
+          aria-controls={shouldOpen ? `${inputId}-list` : undefined}
           aria-activedescendant={activeIdx >= 0 ? `${inputId}-opt-${activeIdx}` : undefined}
           className={cn(
             'h-12 w-full rounded-[10px] border bg-white px-4 text-[18px] text-[#2D4A3E]',
@@ -99,9 +110,8 @@ export function AutocompleteInput({
         )}
       </div>
 
-      {open && (
+      {shouldOpen && (
         <ul
-          ref={listRef}
           id={`${inputId}-list`}
           role="listbox"
           className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-[#D4E8DF] rounded-[10px] shadow-[0_4px_16px_rgba(26,77,58,.12)] max-h-60 overflow-y-auto"

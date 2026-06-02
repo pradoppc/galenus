@@ -10,18 +10,24 @@ export async function GET(req: NextRequest) {
   const municipio = sp.get('municipio')?.trim()
   const q         = sp.get('q')?.trim()
 
-  if (!uf || !municipio || !q || q.length < 3) return NextResponse.json([])
+  if (!uf || !municipio) return NextResponse.json([])
+
+  const conds = [
+    eq(farmacias.uf, uf),
+    ilike(farmacias.municipio, `%${municipio}%`),
+  ]
+
+  // q opcional — quando presente filtra por nome, senão retorna todos do município
+  if (q && q.length >= 2) {
+    conds.push(ilike(farmacias.nome, `%${q}%`))
+  }
 
   const rows = await db
     .selectDistinct({ nome: farmacias.nome })
     .from(farmacias)
-    .where(and(
-      eq(farmacias.uf, uf),
-      ilike(farmacias.municipio, `%${municipio}%`),
-      ilike(farmacias.nome, `%${q}%`),
-    ))
+    .where(and(...conds))
     .orderBy(sql`LENGTH(${farmacias.nome}) ASC`)
-    .limit(10)
+    .limit(50)
 
   const results = rows.map(r => r.nome).filter(Boolean) as string[]
   return NextResponse.json(results, {
