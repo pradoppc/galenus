@@ -37,7 +37,7 @@ async function bulkUpsertFarmacias(rows: typeof schema.farmacias.$inferInsert[])
     const chunk = rows.slice(i, i + CHUNK)
     await db.insert(schema.farmacias).values(chunk).onConflictDoUpdate({
       target: schema.farmacias.cnes,
-      set: { nome: sql`excluded.nome`, municipio: sql`excluded.municipio`, uf: sql`excluded.uf`, endereco: sql`excluded.endereco`, latitude: sql`excluded.latitude`, longitude: sql`excluded.longitude`, updatedAt: sql`now()` },
+      set: { nome: sql`excluded.nome`, fantasia: sql`excluded.fantasia`, municipio: sql`excluded.municipio`, uf: sql`excluded.uf`, endereco: sql`excluded.endereco`, latitude: sql`excluded.latitude`, longitude: sql`excluded.longitude`, updatedAt: sql`now()` },
     })
     process.stdout.write(`\r  Farmácias: ${Math.min(i + CHUNK, rows.length).toLocaleString()}/${rows.length.toLocaleString()}`)
   }
@@ -128,6 +128,7 @@ async function importCsv(csvPath: string) {
       farmaciaMap.set(cnes, {
         cnes,
         nome:      toTitleCase(row.no_razao_social || row.no_fantasia || 'Estabelecimento'),
+        fantasia:  row.no_fantasia ? toTitleCase(row.no_fantasia) : null,
         municipio: toTitleCase(row.no_municipio || ''),
         uf:        (row.sg_uf || '').toUpperCase().trim(),
         endereco:  [row.no_logradouro, row.nu_endereco, row.no_bairro, row.no_municipio, row.sg_uf].filter(Boolean).join(', ') || null,

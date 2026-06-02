@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { farmacias } from '@/db/schema'
-import { eq, ilike, and, asc } from 'drizzle-orm'
+import { eq, ilike, and, isNotNull, or, asc } from 'drizzle-orm'
 
 export async function GET(req: NextRequest) {
   const sp        = req.nextUrl.searchParams
@@ -12,24 +12,47 @@ export async function GET(req: NextRequest) {
 
   if (!uf || !municipio) return NextResponse.json([])
 
-  const conds = [
+  const baseConds = [
     eq(farmacias.uf, uf),
     ilike(farmacias.municipio, `%${municipio}%`),
   ]
 
-  // q opcional — quando presente filtra por nome, senão retorna todos do município
-  if (q && q.length >= 2) {
-    conds.push(ilike(farmacias.nome, `%${q}%`))
-  }
+  // Busca preferencial pelo nome fantasia (nome real da unidade)
+  // Fallback para razão social quando fantasia não existe
+  const searchCond = q && q.length >= 2
+    ? or(
+        ilike(farmacias.fantasia, `%${q}%`),
+        ilike(farmacias.nome,     `%${q}%`),
+      )
+    : undefined
 
-  const rows = await db
-    .selectDistinct({ nome: farmacias.nome })
+  const conds = searchCond ? [...baseConds, searchCond] : baseConds
+
+  // Busca unidades com fantasia primeiro
+  const rowsFantasia = await db
+    .selectDistinct({ label: farmacias.fantasia })
+    .from(farmacias)
+    .where(and(...conds, isNotNull(farmacias.fantasia)))
+    .orderBy(asc(farmacias.fantasia))
+    .limit(40)
+
+  // Complementa com razão social para unidades sem fantasia
+  const rowsNome = await db
+    .selectDistinct({ label: farmacias.nome })
     .from(farmacias)
     .where(and(...conds))
     .orderBy(asc(farmacias.nome))
-    .limit(50)
+    .limit(20)
 
-  const results = rows.map(r => r.nome).filter(Boolean) as string[]
+  const seen    = new Set<string>()
+  const results: string[] = []
+
+  for (const r of [...rowsFantasia, ...rowsNome]) {
+    const v = r.label
+    if (v && !seen.has(v)) { seen.add(v); results.push(v) }
+    if (results.length >= 50) break
+  }
+
   return NextResponse.json(results, {
     headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' },
   })

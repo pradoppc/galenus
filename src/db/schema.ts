@@ -57,6 +57,7 @@ export const farmacias = pgTable('farmacias', {
   id:        uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   cnes:      varchar('cnes', { length: 20 }).unique(),
   nome:      varchar('nome', { length: 255 }).notNull(),
+  fantasia:  varchar('fantasia', { length: 255 }),
   municipio: varchar('municipio', { length: 255 }).notNull(),
   uf:        varchar('uf', { length: 2 }).notNull(),
   endereco:  text('endereco'),
