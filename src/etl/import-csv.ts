@@ -111,7 +111,7 @@ async function importCsv(csvPath: string) {
 
   for await (const line of rl) {
     if (!line.trim()) continue
-    const cols = line.split(';').map(c => c.trim().replace(/^"(.*)"$/s, '$1').replace(/""/g, '"'))
+    const cols = line.split(';').map(c => c.trim().replace(/^"([\s\S]*)"$/, '$1').replace(/""/g, '"'))
 
     if (firstLine) { headers = cols.map(h => h.replace(/"/g, '').toLowerCase().trim()); firstLine = false; continue }
 
