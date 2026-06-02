@@ -59,6 +59,16 @@ export default function BuscarPage() {
     fetchResults({ ...params, page: 1 }, false)
   }, [fetchResults])
 
+  const handleLimpar = useCallback(() => {
+    setResults([])
+    setHasMore(false)
+    setPage(1)
+    setLastParams(null)
+    setShowMap(false)
+    setSelected(null)
+    setSearched(false)
+  }, [])
+
   const handleLoadMore = useCallback(() => {
     if (!lastParams) return
     const next = page + 1
@@ -77,7 +87,7 @@ export default function BuscarPage() {
 
       <h1 className="text-[28px] font-medium text-[#1A4D3A] mb-6">Buscar medicamentos</h1>
 
-      <BuscaForm onSearch={handleSearch} loading={loading} />
+      <BuscaForm onSearch={handleSearch} onLimpar={handleLimpar} loading={loading} />
 
       {results.length > 0 && (
         <div className="mt-6 space-y-4">

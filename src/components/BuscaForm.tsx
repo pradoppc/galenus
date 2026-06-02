@@ -7,8 +7,9 @@ import { SEARCH_DEFAULTS } from '@/lib/design-tokens'
 import type { BuscaParams } from '@/types'
 
 interface BuscaFormProps {
-  onSearch: (params: BuscaParams) => void
-  loading?: boolean
+  onSearch:  (params: BuscaParams) => void
+  onLimpar?: () => void
+  loading?:  boolean
 }
 
 const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
@@ -23,7 +24,7 @@ function useDebounce<T>(value: T, delay = 300): T {
   return deb
 }
 
-export function BuscaForm({ onSearch, loading }: BuscaFormProps) {
+export function BuscaForm({ onSearch, onLimpar, loading }: BuscaFormProps) {
   // ── Medicamento ───────────────────────────────────────────────────────────
   const [medTerm,     setMedTerm]     = useState('')
   const [medSugg,     setMedSugg]     = useState<string[]>([])
@@ -153,6 +154,20 @@ export function BuscaForm({ onSearch, loading }: BuscaFormProps) {
     })
   }, [medTerm, uf, munSelected, unitSelected, endSelected, geocodedLat, geocodedLng, raio, onSearch])
 
+  const handleLimpar = useCallback(() => {
+    setMedTerm('');     setMedSugg([])
+    setUf('')
+    setMunInput('');    setMunSelected('');  setAllMuns([])
+    setUnitInput('');   setUnitSelected(''); setAllUnits([])
+    setEndInput('');    setEndSelected('');  setEndSugg([])
+    setGeocodedLat(undefined); setGeocodedLng(undefined)
+    setRaio(SEARCH_DEFAULTS.RADIUS_KM)
+    setErrors({})
+    onLimpar?.()
+  }, [onLimpar])
+
+  const hasFilters = !!(medTerm || uf || munSelected || unitSelected || endSelected)
+
   return (
     <form onSubmit={handleSubmit} className="space-y-5" noValidate>
 
@@ -263,9 +278,22 @@ export function BuscaForm({ onSearch, loading }: BuscaFormProps) {
         </div>
       )}
 
-      <Button type="submit" variant="primary" size="lg" className="w-full" loading={loading}>
-        Buscar medicamento
-      </Button>
+      <div className="flex gap-3">
+        <Button type="submit" variant="primary" size="lg" className="flex-1" loading={loading}>
+          Buscar
+        </Button>
+        {hasFilters && (
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            onClick={handleLimpar}
+            aria-label="Limpar todos os filtros"
+          >
+            Limpar
+          </Button>
+        )}
+      </div>
     </form>
   )
 }
