@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { farmacias } from '@/db/schema'
-import { eq, ilike, and, isNotNull, sql } from 'drizzle-orm'
+import { eq, ilike, and, isNotNull, asc } from 'drizzle-orm'
 
 export async function GET(req: NextRequest) {
   const sp        = req.nextUrl.searchParams
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
       ilike(farmacias.endereco, `%${q}%`),
       isNotNull(farmacias.endereco),
     ))
-    .orderBy(sql`LENGTH(${farmacias.endereco}) ASC`)
+    .orderBy(asc(farmacias.endereco))
     .limit(10)
 
   const results = rows.map(r => r.endereco).filter(Boolean) as string[]

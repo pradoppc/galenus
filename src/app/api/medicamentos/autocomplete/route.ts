@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { medicamentos } from '@/db/schema'
-import { ilike, or, sql } from 'drizzle-orm'
+import { ilike, or, asc } from 'drizzle-orm'
 
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get('q')?.trim()
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
       ilike(medicamentos.produto,        `%${q}%`),
       ilike(medicamentos.principioAtivo, `%${q}%`)
     ))
-    .orderBy(sql`LENGTH(${medicamentos.produto}) ASC`)
+    .orderBy(asc(medicamentos.produto))
     .limit(10)
 
   // Retorna lista de labels únicos (produto + principio se diferente)

@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { farmacias } from '@/db/schema'
-import { eq, ilike, and, sql } from 'drizzle-orm'
+import { eq, ilike, and, asc } from 'drizzle-orm'
 
 export async function GET(req: NextRequest) {
   const sp        = req.nextUrl.searchParams
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
     .selectDistinct({ nome: farmacias.nome })
     .from(farmacias)
     .where(and(...conds))
-    .orderBy(sql`LENGTH(${farmacias.nome}) ASC`)
+    .orderBy(asc(farmacias.nome))
     .limit(50)
 
   const results = rows.map(r => r.nome).filter(Boolean) as string[]
