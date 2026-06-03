@@ -1,6 +1,10 @@
 /**
- * Importador de CSV BNAFAR — usa UNNEST para bulk inserts eficientes
+ * Importador de CSV BNAFAR — PostgreSQL (postgres.js)
  * Uso: npm run etl:csv -- /caminho/arquivo.csv
+ * Encoding esperado: Latin-1 (ISO-8859-1), separador ";"
+ *
+ * Lógica de quantidade: para o mesmo par (cnes, catmat) na mesma data, SOMA os
+ * lotes; data mais recente substitui. Corrige o bug de estoques zerados.
  */
 import { config } from 'dotenv'
 config({ path: '.env.local' })
@@ -8,100 +12,37 @@ config()
 
 import { createReadStream } from 'fs'
 import { createInterface } from 'readline'
-import { neon } from '@neondatabase/serverless'
-import { drizzle } from 'drizzle-orm/neon-http'
-import { eq, sql } from 'drizzle-orm'
-import * as schema from '../db/schema'
+import postgres from 'postgres'
 
-const DB = process.env.DATABASE_URL!
-const sqlClient = neon(DB)
-const db = drizzle(sqlClient, { schema })
+const sql = postgres(process.env.DATABASE_URL!, { max: 10, idle_timeout: 30, connect_timeout: 20, prepare: false })
 
 function toTitleCase(s: string) {
   return s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase()).trim()
 }
 function parseCoord(v: string): number | null {
   const n = parseFloat(v.replace(',', '.'))
-  return isNaN(n) ? null : n
+  return isNaN(n) ? null : Number(n.toFixed(7))
 }
 function parseQty(v: string) {
   const n = parseFloat(v.replace(',', '.'))
   return isNaN(n) ? 0 : Math.floor(n)
 }
 
-async function bulkUpsertFarmacias(rows: typeof schema.farmacias.$inferInsert[]) {
-  if (!rows.length) return
-  // Chunked to stay under Neon's HTTP payload limit (~50 rows safe)
-  const CHUNK = 50
-  for (let i = 0; i < rows.length; i += CHUNK) {
-    const chunk = rows.slice(i, i + CHUNK)
-    await db.insert(schema.farmacias).values(chunk).onConflictDoUpdate({
-      target: schema.farmacias.cnes,
-      set: { nome: sql`excluded.nome`, fantasia: sql`excluded.fantasia`, municipio: sql`excluded.municipio`, uf: sql`excluded.uf`, endereco: sql`excluded.endereco`, latitude: sql`excluded.latitude`, longitude: sql`excluded.longitude`, updatedAt: sql`now()` },
-    })
-    process.stdout.write(`\r  Farmácias: ${Math.min(i + CHUNK, rows.length).toLocaleString()}/${rows.length.toLocaleString()}`)
-  }
-  console.log(' ✓')
-}
-
-async function bulkUpsertMedicamentos(rows: typeof schema.medicamentos.$inferInsert[]) {
-  if (!rows.length) return
-  const CHUNK = 50
-  for (let i = 0; i < rows.length; i += CHUNK) {
-    const chunk = rows.slice(i, i + CHUNK)
-    await db.insert(schema.medicamentos).values(chunk).onConflictDoUpdate({
-      target: schema.medicamentos.codigoCatmat,
-      set: { principioAtivo: sql`excluded.principio_ativo`, produto: sql`excluded.produto`, programa: sql`excluded.programa` },
-    })
-    process.stdout.write(`\r  Medicamentos: ${Math.min(i + CHUNK, rows.length).toLocaleString()}/${rows.length.toLocaleString()}`)
-  }
-  console.log(' ✓')
-}
-
-async function bulkUpsertEstoques(rows: { fId: string; mId: string; qty: number; posDate: Date }[]) {
-  if (!rows.length) return
-  // Use UNNEST for super-efficient bulk upsert — single SQL call per chunk
-  const CHUNK = 1000
-  let done = 0
-  const total = rows.length
-
-  for (let i = 0; i < rows.length; i += CHUNK) {
-    const chunk = rows.slice(i, i + CHUNK)
-
-    const fIds   = chunk.map(r => r.fId)
-    const mIds   = chunk.map(r => r.mId)
-    const qtds   = chunk.map(r => r.qty)
-    const dates  = chunk.map(r => r.posDate.toISOString())
-    const now    = new Date().toISOString()
-
-    await sqlClient`
-      INSERT INTO estoques (farmacia_id, medicamento_id, quantidade, atualizado_em, sincronizado_em)
-      SELECT
-        UNNEST(${fIds}::uuid[]),
-        UNNEST(${mIds}::uuid[]),
-        UNNEST(${qtds}::bigint[]),
-        UNNEST(${dates}::timestamptz[]),
-        now()
-      ON CONFLICT (farmacia_id, medicamento_id)
-      DO UPDATE SET
-        quantidade      = EXCLUDED.quantidade,
-        atualizado_em   = EXCLUDED.atualizado_em,
-        sincronizado_em = now()
-    `
-    done += chunk.length
-    process.stdout.write(`\r  Estoques: ${done.toLocaleString()}/${total.toLocaleString()}`)
-  }
-  console.log(' ✓')
-}
+const FARM_CHUNK = 1000
+const MED_CHUNK  = 1000
+const EST_CHUNK  = 2000
 
 async function importCsv(csvPath: string) {
   console.log(`[ETL CSV] Lendo: ${csvPath}`)
 
-  const [log] = await db.insert(schema.etlLogs).values({ status: 'running', fonte: 'csv' }).returning()
+  const [log] = await sql`INSERT INTO etl_logs (status, fonte) VALUES ('running', 'csv') RETURNING id`
 
-  const farmaciaMap    = new Map<string, typeof schema.farmacias.$inferInsert>()
-  const medicamentoMap = new Map<string, typeof schema.medicamentos.$inferInsert>()
-  const estoqueMap     = new Map<string, { cnes: string; catmat: string; qty: number; posDate: Date }>()
+  interface FarmRow { cnes: string; nome: string; fantasia: string | null; municipio: string; uf: string; bairro: string | null; endereco: string | null; latitude: number | null; longitude: number | null; programa: string | null }
+  interface MedRow  { principio_ativo: string; produto: string; codigo_catmat: string; programa: string | null }
+
+  const farmaciaMap    = new Map<string, FarmRow>()
+  const medicamentoMap = new Map<string, MedRow>()
+  const estoqueMap     = new Map<string, { cnes: string; catmat: string; qty: number; date: string }>()
 
   let totalLines = 0, skipped = 0
   let headers: string[] = []
@@ -111,17 +52,17 @@ async function importCsv(csvPath: string) {
 
   for await (const line of rl) {
     if (!line.trim()) continue
-    const cols = line.split(';').map(c => c.trim().replace(/^"([\s\S]*)"$/, '$1').replace(/""/g, '"'))
-
+    const cols = line.split(';').map(c => c.trim().replace(/^"(.*)"$/s, '$1').replace(/""/g, '"'))
     if (firstLine) { headers = cols.map(h => h.replace(/"/g, '').toLowerCase().trim()); firstLine = false; continue }
 
     totalLines++
-    if (totalLines % 500_000 === 0) process.stdout.write(`\r  Lendo... ${(totalLines / 1_000).toFixed(0)}k linhas`)
+    if (totalLines % 500_000 === 0) process.stdout.write(`\r  Lendo... ${(totalLines/1000).toFixed(0)}k linhas`)
 
     const row: Record<string, string> = {}
     headers.forEach((h, i) => { row[h] = cols[i] ?? '' })
 
-    const cnes = row.co_cnes?.trim(), catmat = row.co_catmat?.trim()
+    const cnes   = row.co_cnes?.trim()
+    const catmat = row.co_catmat?.trim()
     if (!cnes || !catmat || !row.ds_produto) { skipped++; continue }
 
     if (!farmaciaMap.has(cnes)) {
@@ -131,78 +72,109 @@ async function importCsv(csvPath: string) {
         fantasia:  row.no_fantasia ? toTitleCase(row.no_fantasia) : null,
         municipio: toTitleCase(row.no_municipio || ''),
         uf:        (row.sg_uf || '').toUpperCase().trim(),
+        bairro:    row.no_bairro ? toTitleCase(row.no_bairro) : null,
         endereco:  [row.no_logradouro, row.nu_endereco, row.no_bairro, row.no_municipio, row.sg_uf].filter(Boolean).join(', ') || null,
-        latitude:  parseCoord(row.nu_latitude || '') as unknown as string,
-        longitude: parseCoord(row.nu_longitude || '') as unknown as string,
+        latitude:  parseCoord(row.nu_latitude || ''),
+        longitude: parseCoord(row.nu_longitude || ''),
         programa:  row.ds_programa_saude || null,
-        updatedAt: new Date(),
       })
     }
 
     if (!medicamentoMap.has(catmat)) {
       medicamentoMap.set(catmat, {
-        principioAtivo: row.ds_produto.substring(0, 500),
-        produto:        toTitleCase(row.ds_produto.substring(0, 500)),
-        codigoCatmat:   catmat,
-        programa:       row.sg_programa_saude || null,
+        principio_ativo: row.ds_produto.substring(0, 500),
+        produto:         toTitleCase(row.ds_produto.substring(0, 500)),
+        codigo_catmat:   catmat,
+        programa:        row.sg_programa_saude || null,
       })
     }
 
-    const rawDate  = (row.dt_posicao_estoque || '').replace(/\//g, '-')
-    const posDate  = rawDate ? new Date(rawDate) : new Date()
-    const safDate  = isNaN(posDate.getTime()) ? new Date() : posDate
-    const qty      = parseQty(row.qt_estoque || '0')
-    const key      = `${cnes}|${catmat}`
-    const existing = estoqueMap.get(key)
-
-    if (!existing) {
-      // Primeiro registro para esse par
-      estoqueMap.set(key, { cnes, catmat, qty, posDate: safDate })
-    } else if (safDate > existing.posDate) {
-      // Data mais recente: substitui (reinicia a soma com a nova data)
-      estoqueMap.set(key, { cnes, catmat, qty, posDate: safDate })
-    } else if (safDate.getTime() === existing.posDate.getTime()) {
-      // Mesma data: são lotes diferentes → SOMA as quantidades
-      existing.qty += qty
-    }
-    // Data mais antiga: ignora
+    const date  = (row.dt_posicao_estoque || '').replace(/\//g, '-')
+    const qty   = parseQty(row.qt_estoque || '0')
+    const key   = `${cnes}|${catmat}`
+    const exist = estoqueMap.get(key)
+    if (!exist)                   estoqueMap.set(key, { cnes, catmat, qty, date })
+    else if (date > exist.date)   estoqueMap.set(key, { cnes, catmat, qty, date })
+    else if (date === exist.date) exist.qty += qty
   }
 
   console.log(`\n  Lidas: ${totalLines.toLocaleString()} | Ignoradas: ${skipped}`)
-  console.log(`  Farmácias: ${farmaciaMap.size.toLocaleString()} | Medicamentos: ${medicamentoMap.size.toLocaleString()} | Estoques únicos: ${estoqueMap.size.toLocaleString()}`)
+  console.log(`  Farmácias: ${farmaciaMap.size.toLocaleString()} | Medicamentos: ${medicamentoMap.size.toLocaleString()} | Estoques: ${estoqueMap.size.toLocaleString()}`)
 
   try {
-    await bulkUpsertFarmacias([...farmaciaMap.values()])
-    await bulkUpsertMedicamentos([...medicamentoMap.values()])
+    // ── Farmácias ──
+    const farmArr = [...farmaciaMap.values()]
+    for (let i = 0; i < farmArr.length; i += FARM_CHUNK) {
+      const chunk = farmArr.slice(i, i + FARM_CHUNK)
+      await sql`
+        INSERT INTO farmacias ${sql(chunk, 'cnes','nome','fantasia','municipio','uf','bairro','endereco','latitude','longitude','programa')}
+        ON CONFLICT (cnes) DO UPDATE SET
+          nome=EXCLUDED.nome, fantasia=EXCLUDED.fantasia, municipio=EXCLUDED.municipio,
+          uf=EXCLUDED.uf, bairro=EXCLUDED.bairro, endereco=EXCLUDED.endereco,
+          latitude=EXCLUDED.latitude, longitude=EXCLUDED.longitude, updated_at=now()
+      `
+      process.stdout.write(`\r  Farmácias: ${Math.min(i+FARM_CHUNK, farmArr.length).toLocaleString()}/${farmArr.length.toLocaleString()}`)
+    }
+    console.log(' ✓')
 
+    // ── Medicamentos ──
+    const medArr = [...medicamentoMap.values()]
+    for (let i = 0; i < medArr.length; i += MED_CHUNK) {
+      const chunk = medArr.slice(i, i + MED_CHUNK)
+      await sql`
+        INSERT INTO medicamentos ${sql(chunk, 'principio_ativo','produto','codigo_catmat','programa')}
+        ON CONFLICT (codigo_catmat) DO UPDATE SET
+          principio_ativo=EXCLUDED.principio_ativo, produto=EXCLUDED.produto, programa=EXCLUDED.programa
+      `
+      process.stdout.write(`\r  Medicamentos: ${Math.min(i+MED_CHUNK, medArr.length).toLocaleString()}/${medArr.length.toLocaleString()}`)
+    }
+    console.log(' ✓')
+
+    // ── IDs ──
     process.stdout.write('  Carregando IDs...')
-    const farmaciaIdMap    = new Map<string, string>()
-    const medicamentoIdMap = new Map<string, string>()
-    const allF = await db.select({ id: schema.farmacias.id, cnes: schema.farmacias.cnes }).from(schema.farmacias)
-    allF.forEach(r => { if (r.cnes) farmaciaIdMap.set(r.cnes, r.id) })
-    const allM = await db.select({ id: schema.medicamentos.id, catmat: schema.medicamentos.codigoCatmat }).from(schema.medicamentos)
-    allM.forEach(r => { if (r.catmat) medicamentoIdMap.set(r.catmat, r.id) })
-    console.log(` ✓ ${farmaciaIdMap.size} + ${medicamentoIdMap.size}`)
+    const fIdMap = new Map<string, string>()
+    const mIdMap = new Map<string, string>()
+    const fRows = await sql`SELECT id, cnes FROM farmacias`
+    fRows.forEach(r => { if (r.cnes) fIdMap.set(r.cnes, r.id) })
+    const mRows = await sql`SELECT id, codigo_catmat FROM medicamentos`
+    mRows.forEach(r => { if (r.codigo_catmat) mIdMap.set(r.codigo_catmat, r.id) })
+    console.log(` ✓ ${fIdMap.size} + ${mIdMap.size}`)
 
-    const estoqueRows = [...estoqueMap.values()]
-      .map(({ cnes, catmat, qty, posDate }) => ({
-        fId: farmaciaIdMap.get(cnes)!, mId: medicamentoIdMap.get(catmat)!, qty, posDate,
-      }))
-      .filter(r => r.fId && r.mId)
+    // ── Estoques ──
+    const estArr: { farmacia_id: string; medicamento_id: string; quantidade: number; atualizado_em: string }[] = []
+    for (const { cnes, catmat, qty, date } of estoqueMap.values()) {
+      const fId = fIdMap.get(cnes), mId = mIdMap.get(catmat)
+      if (!fId || !mId) continue
+      const d = date ? new Date(date) : new Date()
+      estArr.push({ farmacia_id: fId, medicamento_id: mId, quantidade: qty, atualizado_em: (isNaN(d.getTime()) ? new Date() : d).toISOString() })
+    }
 
-    await bulkUpsertEstoques(estoqueRows)
+    let done = 0
+    for (let i = 0; i < estArr.length; i += EST_CHUNK) {
+      const chunk = estArr.slice(i, i + EST_CHUNK)
+      await sql`
+        INSERT INTO estoques ${sql(chunk, 'farmacia_id','medicamento_id','quantidade','atualizado_em')}
+        ON CONFLICT (farmacia_id, medicamento_id) DO UPDATE SET
+          quantidade=EXCLUDED.quantidade, atualizado_em=EXCLUDED.atualizado_em, sincronizado_em=now()
+      `
+      done += chunk.length
+      process.stdout.write(`\r  Estoques: ${done.toLocaleString()}/${estArr.length.toLocaleString()}`)
+    }
+    console.log(' ✓')
 
-    await db.update(schema.etlLogs).set({
-      finalizadoEm: new Date(), status: 'success',
-      farmaciaProcessadas: farmaciaMap.size, medicamentosProcessados: medicamentoMap.size, estoquesProcessados: estoqueRows.length,
-    }).where(eq(schema.etlLogs.id, log.id))
-
-    console.log('\n[ETL CSV] Concluído!')
-    console.log(`  Farmácias: ${farmaciaMap.size.toLocaleString()} | Medicamentos: ${medicamentoMap.size.toLocaleString()} | Estoques: ${estoqueRows.length.toLocaleString()}`)
+    await sql`
+      UPDATE etl_logs SET finalizado_em=now(), status='success',
+        farmacias_processadas=${farmaciaMap.size}, medicamentos_processados=${medicamentoMap.size}, estoques_processados=${estArr.length}
+      WHERE id=${log.id}
+    `
+    console.log(`\n[ETL CSV] Concluído!`)
+    console.log(`  Farmácias: ${farmaciaMap.size.toLocaleString()} | Medicamentos: ${medicamentoMap.size.toLocaleString()} | Estoques: ${estArr.length.toLocaleString()}`)
+    await sql.end()
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('\n[ETL CSV] Erro:', msg.substring(0, 500))
-    await db.update(schema.etlLogs).set({ finalizadoEm: new Date(), status: 'error', erroMensagem: msg.substring(0, 2000) }).where(eq(schema.etlLogs.id, log.id))
+    await sql`UPDATE etl_logs SET finalizado_em=now(), status='error', erro_mensagem=${msg.substring(0,2000)} WHERE id=${log.id}`
+    await sql.end()
     process.exit(1)
   }
 }
