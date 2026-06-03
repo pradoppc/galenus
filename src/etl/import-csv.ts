@@ -148,13 +148,24 @@ async function importCsv(csvPath: string) {
       })
     }
 
-    const rawDate = (row.dt_posicao_estoque || '').replace(/\//g, '-')
-    const posDate = rawDate ? new Date(rawDate) : new Date()
-    const key = `${cnes}|${catmat}`
+    const rawDate  = (row.dt_posicao_estoque || '').replace(/\//g, '-')
+    const posDate  = rawDate ? new Date(rawDate) : new Date()
+    const safDate  = isNaN(posDate.getTime()) ? new Date() : posDate
+    const qty      = parseQty(row.qt_estoque || '0')
+    const key      = `${cnes}|${catmat}`
     const existing = estoqueMap.get(key)
-    if (!existing || posDate > existing.posDate) {
-      estoqueMap.set(key, { cnes, catmat, qty: parseQty(row.qt_estoque || '0'), posDate: isNaN(posDate.getTime()) ? new Date() : posDate })
+
+    if (!existing) {
+      // Primeiro registro para esse par
+      estoqueMap.set(key, { cnes, catmat, qty, posDate: safDate })
+    } else if (safDate > existing.posDate) {
+      // Data mais recente: substitui (reinicia a soma com a nova data)
+      estoqueMap.set(key, { cnes, catmat, qty, posDate: safDate })
+    } else if (safDate.getTime() === existing.posDate.getTime()) {
+      // Mesma data: são lotes diferentes → SOMA as quantidades
+      existing.qty += qty
     }
+    // Data mais antiga: ignora
   }
 
   console.log(`\n  Lidas: ${totalLines.toLocaleString()} | Ignoradas: ${skipped}`)

@@ -10,6 +10,7 @@
     "etl:sync": "npx tsx src/etl/sync.ts",
     "etl:csv": "npx tsx src/etl/import-csv.ts",
     "etl:bairro": "npx tsx src/etl/update-bairro.ts",
+    "etl:fix-estoques": "npx tsx src/etl/fix-estoques.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"
