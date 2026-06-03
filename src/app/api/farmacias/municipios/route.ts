@@ -2,9 +2,13 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { farmacias } from '@/db/schema'
-import { eq, sql } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
+import { rateLimit } from '@/lib/rate-limit'
 
 export async function GET(req: NextRequest) {
+  const limited = rateLimit(req, { limit: 60 })
+  if (limited) return limited
+
   const uf = req.nextUrl.searchParams.get('uf')?.toUpperCase().trim()
   if (!uf) return NextResponse.json({ error: 'UF obrigatória' }, { status: 400 })
 

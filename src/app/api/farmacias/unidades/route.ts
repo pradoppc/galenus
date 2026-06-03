@@ -3,8 +3,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { farmacias } from '@/db/schema'
 import { eq, ilike, and, isNotNull, or, asc } from 'drizzle-orm'
+import { rateLimit } from '@/lib/rate-limit'
 
 export async function GET(req: NextRequest) {
+  const limited = rateLimit(req, { limit: 60 })
+  if (limited) return limited
+
   const sp        = req.nextUrl.searchParams
   const uf        = sp.get('uf')?.toUpperCase().trim()
   const municipio = sp.get('municipio')?.trim()

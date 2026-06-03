@@ -4,8 +4,7 @@ import { z } from 'zod'
 import { db } from '@/db'
 import { farmacias, medicamentos, estoques, etlLogs } from '@/db/schema'
 import { eq, ilike, or, desc, sql, and } from 'drizzle-orm'
-import { checkRateLimit } from '@/lib/rate-limit'
-import { getClientIP } from '@/lib/utils'
+import { rateLimit } from '@/lib/rate-limit'
 import { SEARCH_DEFAULTS } from '@/lib/design-tokens'
 
 const querySchema = z.object({
@@ -20,13 +19,9 @@ const querySchema = z.object({
 })
 
 export async function GET(req: NextRequest) {
-  const ip = getClientIP(req)
-  if (!checkRateLimit(ip)) {
-    return NextResponse.json(
-      { error: 'Muitas requisições. Aguarde um minuto.' },
-      { status: 429, headers: { 'Retry-After': '60' } }
-    )
-  }
+  // Busca principal: 30 req/min por IP
+  const limited = rateLimit(req, { limit: 30 })
+  if (limited) return limited
 
   const params = Object.fromEntries(req.nextUrl.searchParams)
   const parsed = querySchema.safeParse(params)

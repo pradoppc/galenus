@@ -2,8 +2,8 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 import { AutocompleteInput } from '@/components/ui/AutocompleteInput'
-import { SEARCH_DEFAULTS } from '@/lib/design-tokens'
 import type { BuscaParams } from '@/types'
 
 interface BuscaFormProps {
@@ -14,21 +14,9 @@ interface BuscaFormProps {
 
 const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
 
-function useDebounce<T>(value: T, delay = 300): T {
-  const [deb, setDeb] = useState(value)
-  useEffect(() => {
-    const t = setTimeout(() => setDeb(value), delay)
-    return () => clearTimeout(t)
-  }, [value, delay])
-  return deb
-}
-
 export function BuscaForm({ onSearch, onLimpar, loading }: BuscaFormProps) {
-  // ── Medicamento ───────────────────────────────────────────────────────────
+  // ── Medicamento (texto livre, busca aproximada na base) ───────────────────
   const [medTerm,     setMedTerm]     = useState('')
-  const [medSugg,     setMedSugg]     = useState<string[]>([])
-  const [medLoading,  setMedLoading]  = useState(false)
-  const debouncedMed                  = useDebounce(medTerm, 300)
 
   // ── UF ────────────────────────────────────────────────────────────────────
   const [uf,          setUf]          = useState('')
@@ -95,17 +83,6 @@ export function BuscaForm({ onSearch, onLimpar, loading }: BuscaFormProps) {
       .catch(() => setAllUnits([])).finally(() => setUnitLoading(false))
   }, [munSelected, uf])
 
-  // ── Autocomplete medicamento ───────────────────────────────────────────────
-  useEffect(() => {
-    if (debouncedMed.length < 3) { setMedSugg([]); return }
-    setMedLoading(true)
-    fetch(`/api/medicamentos/autocomplete?q=${encodeURIComponent(debouncedMed)}`)
-      .then(r => r.json())
-      .then((d: { value: string }[]) => setMedSugg(d.map(x => x.value)))
-      .catch(() => setMedSugg([]))
-      .finally(() => setMedLoading(false))
-  }, [debouncedMed])
-
   // ── Submissão ──────────────────────────────────────────────────────────────
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault()
@@ -126,7 +103,7 @@ export function BuscaForm({ onSearch, onLimpar, loading }: BuscaFormProps) {
 
   // ── Limpar ─────────────────────────────────────────────────────────────────
   const handleLimpar = useCallback(() => {
-    setMedTerm('');       setMedSugg([])
+    setMedTerm('')
     setUf('')
     setMunInput('');      setMunSelected('');    setAllMuns([])
     setBairroInput('');   setBairroSelected(''); setAllBairros([])
@@ -140,16 +117,17 @@ export function BuscaForm({ onSearch, onLimpar, loading }: BuscaFormProps) {
   return (
     <form onSubmit={handleSubmit} className="space-y-5" noValidate>
 
-      {/* Medicamento */}
-      <AutocompleteInput
-        label="Medicamento" required
-        placeholder="Ex: metformina, losartana..."
+      {/* Medicamento — texto livre, busca aproximada ao submeter */}
+      <Input
+        label="Medicamento *"
+        type="search"
+        placeholder="Ex: metformina, dipirona, losartana..."
         value={medTerm}
-        onChange={v => { setMedTerm(v); clearError('q') }}
-        suggestions={medSugg}
-        loading={medLoading}
+        onChange={e => { setMedTerm(e.target.value); clearError('q') }}
         error={errors.q}
+        hint="Digite o nome do medicamento e clique em Buscar"
         id="medicamento"
+        autoComplete="off"
       />
 
       {/* UF */}

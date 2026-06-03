@@ -1,10 +1,14 @@
 export const dynamic = 'force-dynamic'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { farmacias } from '@/db/schema'
 import { sql } from 'drizzle-orm'
+import { rateLimit } from '@/lib/rate-limit'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const limited = rateLimit(req, { limit: 60 })
+  if (limited) return limited
+
   const rows = await db
     .selectDistinct({ uf: farmacias.uf })
     .from(farmacias)
