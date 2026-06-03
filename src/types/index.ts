@@ -12,7 +12,9 @@ declare module 'next-auth' {
 export interface MedicamentoResult {
   farmacia_id: string
   farmacia_nome: string
-  farmacia_endereco: string
+  farmacia_fantasia: string | null
+  farmacia_bairro: string | null
+  farmacia_endereco: string | null
   farmacia_municipio: string
   farmacia_uf: string
   farmacia_lat: number | null
@@ -30,11 +32,8 @@ export interface BuscaParams {
   q:         string
   uf:        string
   municipio: string
-  endereco?: string
+  bairro?:   string
   unidade?:  string
-  lat?:      number
-  lng?:      number
-  raio?:     number
   programa?: string
   page?:     number
   limit?:    number

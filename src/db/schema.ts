@@ -60,6 +60,7 @@ export const farmacias = pgTable('farmacias', {
   fantasia:  varchar('fantasia', { length: 255 }),
   municipio: varchar('municipio', { length: 255 }).notNull(),
   uf:        varchar('uf', { length: 2 }).notNull(),
+  bairro:    varchar('bairro', { length: 255 }),
   endereco:  text('endereco'),
   latitude:  numeric('latitude', { precision: 10, scale: 7 }),
   longitude: numeric('longitude', { precision: 10, scale: 7 }),

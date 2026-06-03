@@ -110,9 +110,26 @@ export default async function HomePage() {
         </section>
 
         {/* Footer */}
-        <footer className="py-4 text-center text-[14px] text-[#9CB8B0]">
-          <p>Dados: <a href="https://bnafar.saude.gov.br" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#5B8C7A]">BNAFAR / Ministério da Saúde</a></p>
-          <p className="mt-1">Serviço gratuito e independente.</p>
+        <footer className="py-6 text-center space-y-2">
+          <p className="text-[14px] text-[#5B8C7A]">
+            Dados públicos:{' '}
+            <a href="https://bnafar.saude.gov.br" target="_blank" rel="noopener noreferrer"
+              className="underline hover:text-[#1A4D3A]">
+              BNAFAR / Ministério da Saúde
+            </a>
+          </p>
+          <p className="text-[13px] text-[#9CB8B0] max-w-[480px] mx-auto leading-relaxed">
+            O Galenus é uma ferramenta de utilidade pública, gratuita e independente,
+            desenvolvida e mantida de forma voluntária para facilitar o acesso da
+            população aos medicamentos do SUS.
+          </p>
+          <p className="text-[13px] text-[#9CB8B0]">
+            Dúvidas ou sugestões:{' '}
+            <a href="mailto:patrickcprado@gmail.com"
+              className="underline hover:text-[#1A4D3A] transition-colors">
+              patrickcprado@gmail.com
+            </a>
+          </p>
         </footer>
       </main>
     </>

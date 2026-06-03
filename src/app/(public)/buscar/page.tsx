@@ -33,11 +33,9 @@ export default function BuscarPage() {
         page:      String(params.page ?? 1),
         limit:     '20',
       })
-      if (params.endereco)                  sp.set('endereco', params.endereco)
-      if (params.lat != null)               sp.set('lat',  String(params.lat))
-      if (params.lng != null)               sp.set('lng',  String(params.lng))
-      if (params.raio != null)              sp.set('raio', String(params.raio))
-      if (params.programa)                  sp.set('programa', params.programa)
+      if (params.bairro)   sp.set('bairro',   params.bairro)
+      if (params.unidade)  sp.set('unidade',  params.unidade)
+      if (params.programa) sp.set('programa', params.programa)
 
       const res  = await fetch(`/api/medicamentos?${sp}`)
       const data = await res.json() as BuscaResponse & { hasMore: boolean }
@@ -108,8 +106,8 @@ export default function BuscarPage() {
           {showMap && (
             <MapaFarmacias
               items={results}
-              userLat={lastParams?.lat}
-              userLng={lastParams?.lng}
+              userLat={undefined}
+              userLng={undefined}
               selected={selected}
             />
           )}
