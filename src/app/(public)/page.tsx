@@ -123,6 +123,19 @@ export default async function HomePage() {
             desenvolvida e mantida de forma voluntária para facilitar o acesso da
             população aos medicamentos do SUS.
           </p>
+          <p className="text-[12px] text-[#9CB8B0] max-w-[480px] mx-auto leading-relaxed">
+            <strong className="font-medium">Aviso importante:</strong> o Galenus não
+            atualiza, gerencia ou interfere nos estoques de medicamentos — apenas exibe,
+            de forma mais simples, os dados públicos informados e mantidos pelos municípios
+            e pelos sistemas de controle interno do Ministério da Saúde. As quantidades
+            apresentadas podem estar desatualizadas ou divergir da realidade da unidade.
+            Por isso, antes de se deslocar para retirar qualquer medicamento, procure
+            sempre o contato da unidade de saúde e confirme a disponibilidade. A plataforma
+            não indica, prescreve nem recomenda medicamentos de nenhuma forma. Os
+            administradores do Galenus não se responsabilizam por quaisquer prejuízos,
+            deslocamentos ou danos decorrentes do uso das informações aqui exibidas ou da
+            imperícia do próprio usuário.
+          </p>
           <p className="text-[13px] text-[#9CB8B0]">
             Dúvidas ou sugestões:{' '}
             <a href="mailto:patrickcprado@gmail.com"

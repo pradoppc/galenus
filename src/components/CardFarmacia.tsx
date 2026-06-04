@@ -29,6 +29,8 @@ export function CardFarmacia({ item, onVerMapa }: CardFarmaciaProps) {
       `📦 *Quantidade em estoque:* ${item.quantidade} unidades`,
       `📍 *Endereço:* ${endereco}`,
       ``,
+      `⚠️ *Atenção:* o Galenus apenas exibe os dados de estoque informados pelos municípios e pelo Ministério da Saúde — não os atualiza. Antes de se deslocar, confirme a disponibilidade com a unidade de saúde. A plataforma não indica nem recomenda medicamentos.`,
+      ``,
       `_Fonte: galenusmed.com.br — Porque saúde começa com acesso_`,
     ].filter(Boolean).join('\n')
 
