@@ -10,10 +10,10 @@ on:
     - cron: '0 21 * * *'
   workflow_dispatch:
     inputs:
-      reason:
-        description: 'Motivo da execução manual'
+      file_url:
+        description: 'URL específica do arquivo BNAFAR (opcional — sobrescreve a busca automática)'
         required: false
-        default: 'Execução manual'
+        default: ''
 
 jobs:
   sync:
@@ -31,16 +31,19 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      - name: Garantir unzip disponível
+        run: command -v unzip || sudo apt-get install -y unzip
+
       - name: Instalar dependências
         run: npm ci
 
-      - name: Executar ETL
+      - name: Executar ETL (download + import)
         run: npm run etl:sync
         env:
-          DATABASE_URL:   ${{ secrets.DATABASE_URL }}
-          BNAFAR_API_URL: ${{ secrets.BNAFAR_API_URL }}
-          BNAFAR_API_KEY: ${{ secrets.BNAFAR_API_KEY }}
-          ETL_SOURCE:     cron
+          DATABASE_URL:     ${{ secrets.DATABASE_URL }}
+          BNAFAR_FILES_URL: ${{ secrets.BNAFAR_FILES_URL }}
+          BNAFAR_FILE_URL:  ${{ github.event.inputs.file_url }}
+          ETL_SOURCE:       cron
 
       - name: Notificar falha
         if: failure()
