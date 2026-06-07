@@ -2,8 +2,8 @@
  * ETL automatizado BNAFAR — baixa o arquivo de Posição de Estoque mais recente
  * do servidor oficial de dados abertos e importa para o banco.
  *
- * Fonte: https://arquivosdadosabertos.saude.gov.br/dados/bnafar/
- * Padrão de nome observado: Posicao_Estoque[_csv]_DD-MM-YYYY.(zip|csv)
+ * Fonte: https://s3.sa-east-1.amazonaws.com/ckan.saude.gov.br/bnafar/csv/
+ * Padrão de nome observado: Posicao_Estoque_csv_DD-MM-YYYY.zip
  *
  * Comportamento:
  *  - Procura o arquivo mais recente testando datas (hoje voltando N dias) e os
@@ -31,7 +31,7 @@ import { importCsvFile } from './csv-importer'
 
 const execFileP = promisify(execFile)
 
-const BASE_URL      = process.env.BNAFAR_FILES_URL ?? 'https://arquivosdadosabertos.saude.gov.br/dados/bnafar'
+const BASE_URL      = process.env.BNAFAR_FILES_URL || 'https://s3.sa-east-1.amazonaws.com/ckan.saude.gov.br/bnafar/csv'
 const MAX_DAYS_BACK = Number(process.env.BNAFAR_MAX_DAYS_BACK ?? 35)
 const WORK_DIR      = join(tmpdir(), 'galenus-bnafar')
 
