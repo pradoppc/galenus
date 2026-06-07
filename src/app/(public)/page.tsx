@@ -7,6 +7,10 @@ import { etlLogs } from '@/db/schema'
 import { eq, desc } from 'drizzle-orm'
 import { AccessibilityToggle } from '@/components/AccessibilityToggle'
 
+// ISR: regenera a home a cada 30 min para que "Dados atualizados em" reflita
+// a última sincronização do ETL (3x/dia) sem ficar congelado no build.
+export const revalidate = 1800
+
 export const metadata: Metadata = {
   title:       'Galenus — Porque saúde começa com acesso',
   description: 'Encontre medicamentos gratuitos nas farmácias do governo perto de você. Farmácia Popular, RENAME e componente especializado.',
