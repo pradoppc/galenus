@@ -35,7 +35,7 @@ const nextConfig: NextConfig = {
               "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com",
-              "img-src 'self' data: https://*.tile.openstreetmap.org https://unpkg.com",
+              "img-src 'self' data: https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://unpkg.com",
               "connect-src 'self' https://nominatim.openstreetmap.org https://apidadosabertos.saude.gov.br",
               "frame-src https://challenges.cloudflare.com",
             ].join('; '),

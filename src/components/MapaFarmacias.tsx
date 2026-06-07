@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import 'leaflet/dist/leaflet.css'
 import type { MedicamentoResult } from '@/types'
 
 interface MapaFarmaciasProps {
@@ -32,10 +33,14 @@ export function MapaFarmacias({ items, userLat, userLng, selected }: MapaFarmaci
       const map = L.map(mapRef.current!).setView([centerLat, centerLng], 12)
       leafletRef.current = map
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
         maxZoom: 19,
       }).addTo(map)
+
+      // O container pode ser medido com altura 0 quando o mapa é exibido
+      // (toggle / dynamic import). Recalcula o tamanho após o layout assentar.
+      requestAnimationFrame(() => leafletRef.current?.invalidateSize())
 
       if (userLat && userLng) {
         const userIcon = L.divIcon({
