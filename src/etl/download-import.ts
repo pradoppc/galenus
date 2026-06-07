@@ -33,6 +33,9 @@ const execFileP = promisify(execFile)
 
 const BASE_URL      = process.env.BNAFAR_FILES_URL || 'https://s3.sa-east-1.amazonaws.com/ckan.saude.gov.br/bnafar/csv'
 const MAX_DAYS_BACK = Number(process.env.BNAFAR_MAX_DAYS_BACK ?? 35)
+// Tolera quedas curtas da fonte (manutenção do MS), mas alerta se ficar muitos
+// dias sem carga bem-sucedida — aí o workflow falha e o GitHub Actions notifica.
+const ALERT_STALE_DAYS = Number(process.env.ETL_ALERT_MAX_STALE_DAYS ?? 3)
 const WORK_DIR      = join(tmpdir(), 'galenus-bnafar')
 
 function fmtDate(d: Date): string {
@@ -106,14 +109,27 @@ async function resolveCsvPath(filePath: string): Promise<string> {
   return join(WORK_DIR, csv)
 }
 
-async function registerSkip(motivo: string) {
+/**
+ * Registra o skip e retorna há quantos dias foi a última carga BEM-SUCEDIDA.
+ * Infinity = nunca houve sucesso. NaN = não foi possível consultar (erro de DB).
+ */
+async function registerSkip(motivo: string): Promise<number> {
   try {
     const sql = postgres(process.env.DATABASE_URL!, { max: 1, connect_timeout: 15, prepare: false })
     await sql`INSERT INTO etl_logs (status, fonte, finalizado_em, erro_mensagem)
               VALUES ('skipped', ${process.env.ETL_SOURCE ?? 'cron'}, now(), ${motivo})`
+    // Elapsed calculado no banco para evitar descasamento de fuso entre o
+    // 'timestamp without time zone' do Postgres e o Date.now() do Node.
+    const [row] = await sql`
+      SELECT EXTRACT(EPOCH FROM (now()::timestamp - max(iniciado_em))) AS secs
+      FROM etl_logs WHERE status = 'success'
+    `
     await sql.end()
+    if (row?.secs == null) return Infinity
+    return Number(row.secs) / 86_400
   } catch (e) {
     console.error('[ETL] Não foi possível registrar skip:', (e as Error).message)
+    return NaN
   }
 }
 
@@ -127,9 +143,20 @@ async function main() {
   if (!fileUrl) {
     const motivo = 'Fonte BNAFAR indisponível (nenhum arquivo encontrado nos últimos ' + MAX_DAYS_BACK + ' dias). Portal possivelmente em manutenção.'
     console.warn(`[ETL] ${motivo}`)
-    console.warn('[ETL] Encerrando sem erro — dados atuais permanecem no banco.')
-    await registerSkip(motivo)
-    process.exit(0)   // não falha o workflow durante manutenção do governo
+    const staleDays = await registerSkip(motivo)
+
+    // Defasagem além do limite → falha o workflow para o GitHub Actions alertar.
+    const stale = staleDays === Infinity || (Number.isFinite(staleDays) && staleDays >= ALERT_STALE_DAYS)
+    if (stale) {
+      const quanto = staleDays === Infinity ? 'nenhuma carga bem-sucedida registrada' : `${staleDays.toFixed(1)} dias sem carga bem-sucedida (limite: ${ALERT_STALE_DAYS})`
+      // `::error::` vira anotação de erro no GitHub Actions (lido do stdout).
+      console.log(`::error::[ETL] ALERTA: ${quanto}. A fonte BNAFAR pode ter mudado de URL/padrão — verifique.`)
+      console.error(`[ETL] ALERTA: ${quanto}.`)
+      process.exit(1)
+    }
+
+    console.warn('[ETL] Encerrando sem erro — dados atuais permanecem no banco (dentro da janela de tolerância).')
+    process.exit(0)   // queda curta da fonte: não falha o workflow
   }
 
   const isZip   = fileUrl.toLowerCase().endsWith('.zip')
