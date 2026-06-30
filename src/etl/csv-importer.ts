@@ -14,6 +14,11 @@ import postgres from 'postgres'
 function toTitleCase(s: string) {
   return s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase()).trim()
 }
+
+const MUNICIPIO_INVALIDO = /código.*ibge|ibge.*munic[íi]pio|ignorado no estado/i
+function isValidMunicipio(s: string): boolean {
+  return !!s.trim() && !MUNICIPIO_INVALIDO.test(s)
+}
 function parseCoord(v: string): number | null {
   const n = parseFloat(v.replace(',', '.'))
   return isNaN(n) ? null : Number(n.toFixed(7))
@@ -73,12 +78,13 @@ export async function importCsvFile(csvPath: string, fonte = 'csv'): Promise<Imp
       const catmat = row.co_catmat?.trim()
       if (!cnes || !catmat || !row.ds_produto) { skipped++; continue }
 
+      const rawMunicipio = toTitleCase(row.no_municipio || '')
       if (!farmaciaMap.has(cnes)) {
         farmaciaMap.set(cnes, {
           cnes,
           nome:      toTitleCase(row.no_razao_social || row.no_fantasia || 'Estabelecimento'),
           fantasia:  row.no_fantasia ? toTitleCase(row.no_fantasia) : null,
-          municipio: toTitleCase(row.no_municipio || ''),
+          municipio: rawMunicipio,
           uf:        (row.sg_uf || '').toUpperCase().trim(),
           bairro:    row.no_bairro ? toTitleCase(row.no_bairro) : null,
           endereco:  [row.no_logradouro, row.nu_endereco, row.no_bairro, row.no_municipio, row.sg_uf].filter(Boolean).join(', ') || null,
@@ -86,6 +92,8 @@ export async function importCsvFile(csvPath: string, fonte = 'csv'): Promise<Imp
           longitude: parseCoord(row.nu_longitude || ''),
           programa:  row.ds_programa_saude || null,
         })
+      } else if (!isValidMunicipio(farmaciaMap.get(cnes)!.municipio) && isValidMunicipio(rawMunicipio)) {
+        farmaciaMap.get(cnes)!.municipio = rawMunicipio
       }
 
       if (!medicamentoMap.has(catmat)) {
@@ -118,7 +126,11 @@ export async function importCsvFile(csvPath: string, fonte = 'csv'): Promise<Imp
       await sql`
         INSERT INTO farmacias ${sql(chunk, 'cnes','nome','fantasia','municipio','uf','bairro','endereco','latitude','longitude','programa')}
         ON CONFLICT (cnes) DO UPDATE SET
-          nome=EXCLUDED.nome, fantasia=EXCLUDED.fantasia, municipio=EXCLUDED.municipio,
+          nome=EXCLUDED.nome, fantasia=EXCLUDED.fantasia,
+          municipio=CASE
+            WHEN EXCLUDED.municipio ~* 'código.*ibge|ibge.*munic|ignorado no estado' THEN farmacias.municipio
+            ELSE EXCLUDED.municipio
+          END,
           uf=EXCLUDED.uf, bairro=EXCLUDED.bairro, endereco=EXCLUDED.endereco,
           latitude=EXCLUDED.latitude, longitude=EXCLUDED.longitude, updated_at=now()
       `
